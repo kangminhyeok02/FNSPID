@@ -4,6 +4,7 @@ import os
 import json
 import time
 import math
+import argparse
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ current_time = datetime.now().strftime("%Y%m%d%H")
 
 
 def output_results_and_errors_multiple(predicted_data, true_data, true_data_base, prediction_len, file_name,
-                                       sentiment_type, num_csvs):
+                                       sentiment_type, num_csvs, tag):
     ### 输出预测和真实值
     # 创建一个空的DataFrame
     save_df = pd.DataFrame()
@@ -48,7 +49,8 @@ def output_results_and_errors_multiple(predicted_data, true_data, true_data_base
 
     # 如果预测值的长度不同，则填充NaN
     save_df = save_df.fillna(np.nan)
-    result_folder = f"test_result_{num_csvs}"
+    tag_suffix = f"_{tag}" if tag else ""
+    result_folder = f"test_result_{num_csvs}{tag_suffix}"
     save_file_path = os.path.join(result_folder, f"{file_name}_{sentiment_type}_{current_time}",
                                   f"{file_name}_{sentiment_type}_{current_time}_predicted_data.csv")
     # 保存DataFrame到CSV文件
@@ -86,12 +88,12 @@ def output_results_and_errors_multiple(predicted_data, true_data, true_data_base
 
 
 # Main Function
-def main(configs, data_filename, sentiment_type, flag_pred, model_name, num_csvs):
+def main(configs, data_filename, sentiment_type, flag_pred, model_name, num_csvs, data_dir, tag, retrain):
     symbol_name = name.split('.')[0]
     if not os.path.exists(configs['model']['save_dir']): os.makedirs(configs['model']['save_dir'])
 
     data = DataLoader(
-        os.path.join('data', data_filename),
+        os.path.join(data_dir, data_filename),
         configs['data']['train_test_split'],
         configs['data']['columns'],
         configs['data']['columns_to_normalise'],
@@ -99,8 +101,9 @@ def main(configs, data_filename, sentiment_type, flag_pred, model_name, num_csvs
     )
 
     model = Model()
-    model_path = f"saved_models/{model_name}_{sentiment_type}_{num_csvs}.h5"
-    if os.path.exists(model_path):
+    tag_suffix = f"_{tag}" if tag else ""
+    model_path = f"saved_models/{model_name}_{sentiment_type}_{num_csvs}{tag_suffix}.h5"
+    if os.path.exists(model_path) and not retrain:
         model.load_model(model_path)
     else:
         model.build_model(configs)
@@ -138,7 +141,8 @@ def main(configs, data_filename, sentiment_type, flag_pred, model_name, num_csvs
         save_dir=configs['model']['save_dir'],
         sentiment_type=sentiment_type,
         model_name=model_name,
-        num_csvs=num_csvs
+        num_csvs=num_csvs,
+        tag=tag
     )
     if flag_pred:
         if symbol_name in pred_names:
@@ -155,12 +159,22 @@ def main(configs, data_filename, sentiment_type, flag_pred, model_name, num_csvs
                                                                     configs['data']['prediction_length'])
 
             output_results_and_errors_multiple(predictions, y_test, y_base, configs['data']['prediction_length'],
-                                               symbol_name, sentiment_type, num_csvs)
+                                               symbol_name, sentiment_type, num_csvs, tag)
 
 
 if __name__ == '__main__':
     model_name = "CNN"
-    sentiment_types = ["nonsentiment"]  # "sentiment",
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-dir", default="data", help="CSV folder under this model directory")
+    parser.add_argument("--sentiment-type", default="nonsentiment", help="sentiment or nonsentiment")
+    parser.add_argument("--num-stocks", type=int, default=50, choices=[5, 25, 50])
+    parser.add_argument("--runs", type=int, default=3, help="number of training runs (3 matches original)")
+    parser.add_argument("--pred", action="store_true", help="enable prediction on final run")
+    parser.add_argument("--tag", default="", help="suffix tag for model/results separation")
+    parser.add_argument("--retrain", action="store_true", help="force retraining even if model file exists")
+    args = parser.parse_args()
+
+    sentiment_types = [args.sentiment_type]
     # Test csvs = 25
     # names = ['AAPL.csv', 'ABBV.csv', 'ACGLO.csv', 'AFGD.csv', 'AGM-A.csv', 'AKO-A.csv', 'AMD.csv', 'AMZN.csv', 'ARTLW.csv', 'BABA.csv', 'BCDAW.csv', 'BH-A.csv', 'BHFAL.csv', 'BRK-B.csv', 'BROGW.csv', 'C.csv', 'CIG-C.csv', 'CLSN.csv', 'COST.csv', 'CRD-A.csv', 'CVX.csv', 'DIS.csv', 'FDEV.csv', 'FITBO.csv', 'GAINL.csv', 'GE.csv', 'GECCM.csv', 'GOOG.csv', 'GRP-UN.csv', 'GTN-A.csv', 'HCXY.csv', 'HVT-A.csv', 'INBKZ.csv', 'INTC.csv', 'KO.csv', 'MSFT.csv', 'NVDA.csv', 'OCFCP.csv', 'PBR-A.csv', 'PYPL.csv', 'QQQ.csv', 'QVCD.csv', 'SBUX.csv', 'T.csv', 'TSLA.csv', 'TSM.csv', 'UCBIO.csv', 'WFC.csv', 'WMT.csv', 'WSO-B.csv']
 
@@ -182,7 +196,8 @@ if __name__ == '__main__':
     # Test csvs = 5
     names_5 = ['KO.csv', 'AMD.csv', 'TSM.csv', 'GOOG.csv', 'WMT.csv']
 
-    all_names = [names_5, names_25, names_50]
+    names_map = {5: names_5, 25: names_25, 50: names_50}
+    all_names = [names_map[args.num_stocks]]
     pred_names = ['KO', 'AMD', "TSM", "GOOG", 'WMT']
     for names in all_names:
         num_stocks = len(names)
@@ -191,12 +206,10 @@ if __name__ == '__main__':
         # num_stocks = 50
         # For the first and second runs, only model training was performed
         # In the third run, it will train and make predictions
-        for i in range(3):
-            if_pred = False
-            if i == 2:
-                if_pred = True
+        for i in range(args.runs):
+            if_pred = args.pred and (i == args.runs - 1)
             for sentiment_type in sentiment_types:
                 for name in names:
                     print(name)
                     configs = json.load(open(sentiment_type + '_config.json', 'r'))
-                    main(configs, name, sentiment_type, if_pred, model_name, num_stocks)
+                    main(configs, name, sentiment_type, if_pred, model_name, num_stocks, args.data_dir, args.tag, args.retrain)

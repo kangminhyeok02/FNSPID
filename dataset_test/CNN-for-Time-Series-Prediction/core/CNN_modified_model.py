@@ -17,7 +17,7 @@ class Model():
 
     def load_model(self, filepath):
         print('[Model] Loading model from file %s' % filepath)
-        self.model = load_model(filepath)
+        self.model = load_model(filepath, compile=False)
 
     def build_model(self, configs):
         timer = Timer()
@@ -84,24 +84,24 @@ class Model():
         print('[Model] Training Completed. Model saved as %s' % save_fname)
         timer.stop()
 
-    def train_generator(self, data_gen, epochs, batch_size, steps_per_epoch, save_dir, sentiment_type, model_name, num_csvs):
+    def train_generator(self, data_gen, epochs, batch_size, steps_per_epoch, save_dir, sentiment_type, model_name, num_csvs, tag=""):
         timer = Timer()
         timer.start()
         print('[Model] Training Started')
         print('[Model] %s epochs, %s batch size, %s batches per epoch' % (epochs, batch_size, steps_per_epoch))
-        model_path = f"{model_name}_{sentiment_type}_{num_csvs}.h5"
+        tag_suffix = f"_{tag}" if tag else ""
+        model_path = f"{model_name}_{sentiment_type}_{num_csvs}{tag_suffix}.h5"
         # save_fname = os.path.join(save_dir, '%s-e%s.h5' % (dt.datetime.now().strftime('%d%m%Y-%H%M%S'), str(epochs)))
         save_fname = os.path.join(save_dir, model_path)
 
         callbacks = [
             ModelCheckpoint(filepath=save_fname, monitor='loss', save_best_only=True)
         ]
-        self.model.fit_generator(
+        self.model.fit(
             data_gen,
             steps_per_epoch=steps_per_epoch,
             epochs=epochs,
-            callbacks=callbacks,
-            workers=1
+            callbacks=callbacks
         )
 
         print('[Model] Training Completed. Model saved as %s' % save_fname)
